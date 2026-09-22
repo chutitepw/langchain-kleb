@@ -517,7 +517,7 @@ wheels = [
 ]
 
 [[package]]
-name = "langchain-course"
+name = "langchain-kleb"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

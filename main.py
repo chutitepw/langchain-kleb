@@ -1,13 +1,18 @@
 from dotenv import load_dotenv
-from langchain_core.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
-from langchain_ollama import ChatOllama
-import pandas as pd
 
 load_dotenv()
 
+from langchain_core.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
+# Ollama for local model deployment
+from langchain_ollama import ChatOllama
+import pandas as pd
+
+
+
+#Load data sample
 def load_file(file_path: str) -> str:
-    df = pd.read_csv(file_path, nrows=500)
+    df = pd.read_csv(file_path, nrows=10000)
     reader = df.to_string(index=False)
     print(df.head(5))
 
@@ -23,6 +28,7 @@ def main():
 
     print("Data loaded successfully.")
 
+    # Prompt for agent to learn about the data sample
     summary_template = """
     given the information {information} and {information2} and {information3} about the benign, ransomware, and spectre hardware events datasets. Each column represents a different hardware event: Branch instruction retired,  Branch misses,  L2 cache references,  L2 cache misses, and  Instruction retired. I want you to analyze the information and provide me with the following:
     1. A short summary of each dataset 
@@ -30,29 +36,34 @@ def main():
     3. Remember each class behavior and the features of the dataset.
     """
 
+    # Put prompt into Langchain prompt template
     summary_prompt_template = PromptTemplate(
         input_variables=["information", "information2", "information3"], template=summary_template
     )
 
-    llm = ChatOllama(temperature=0, model="gemma4:e4b")
+    # For OpenAI api
     # llm = ChatOpenAI(temperature=0, model="gpt-5")
+    # For Ollama local model deployment
+    llm = ChatOllama(temperature=0, model="gemma4:e4b")
+    
     chain = summary_prompt_template | llm
 
+    # Invoke chat to get response
     response = chain.invoke(input={"information": information, "information2": information2, "information3": information3})
     print(response.content)
 
-    information4 = load_file("data/arch-amd/original/test-alphv.csv")
-    information5 = load_file("data/arch-amd/original/test-sodinokibi.csv")
-    information6 = load_file("data/arch-amd/original/test-spectre.csv")
+    # Load data sample for classification
+    information4 = load_file("data/arch-amd/original/test-sodinokibi.csv")
 
     classification_template = """
-        given the information {information4} and {information5} and {information6}. Each column represents a different hardware event: Branch instruction retired,  Branch misses,  L2 cache references,  L2 cache misses, and  Instruction retired. I want you to analyze the information and provide me which class (benign, ransomware, spectre) each dataset belongs to according to the previous analysis and the features of the dataset. Please provide a brief explanation for your classification.
+        given the information {information4}. Each column represents a different hardware event: Branch instruction retired,  Branch misses,  L2 cache references,  L2 cache misses, and  Instruction retired. Analyze the information and provide me which class (benign, ransomware, spectre) the dataset belongs to according to the previous analysis and the features of the dataset. Please provide a brief explanation for your classification.
         """
     classification_prompt_template = PromptTemplate(
-            input_variables=["information4", "information5", "information6"], template=classification_template
+            input_variables=["information4"], template=classification_template
         )
     chain2 = classification_prompt_template | llm
-    response2 = chain2.invoke(input={"information4": information4, "information5": information5, "information6": information6})
+    response2 = chain2.invoke(input={"information4": information4})
+    print("Classification Results:")
     print(response2.content)
 
 if __name__ == "__main__":

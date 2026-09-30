@@ -7,64 +7,74 @@ from langchain_openai import ChatOpenAI
 # Ollama for local model deployment
 from langchain_ollama import ChatOllama
 import pandas as pd
+import numpy as np
 
+from langchain.tools import tool
+from langchain.agents import create_agent
 
+from keras.models import load_model
 
-#Load data sample
-def load_file(file_path: str) -> str:
-    df = pd.read_csv(file_path, nrows=10000)
-    reader = df.to_string(index=False)
-    print(df.head(5))
+_model_cache = {}
 
-    return reader
+# Define a tool to classify a CSV file using a Keras model
+@tool
+def classify_csv(file_path: str, model_path: str) -> str:
+    """Classify a hardware-performance-counter CSV with a Keras model. Each data column represents a different hardware event: Branch instruction retired,  Branch misses,  L2 cache references,  L2 cache misses, and  Instruction retired..
+    Args:
+        file_path: Path to the CSV file to classify.
+        model_path: Path to the .keras model file.
+    Returns:
+        A summary of predicted classes (0=benign, 1=ransomware, 2=spectre).
+    """
+
+    # Load the model from cache or disk
+    if model_path not in _model_cache:
+        _model_cache[model_path] = load_model(model_path)
+    model = _model_cache[model_path]
+
+    # Load data sample
+    data = pd.read_csv(file_path, nrows=500).to_numpy()
+    window = 50
+    X = np.array([data[i:i + window] for i in range(len(data) - window)])
+    print(f"Data shape: {X.shape}")
+
+    # Predict classes
+    preds = model.predict(X, verbose=0).argmax(axis=-1)
+    labels = {0: "benign", 1: "ransomware", 2: "spectre"}
+    counts = {labels.get(int(k), str(k)): int(v)
+              for k, v in zip(*np.unique(preds, return_counts=True))}
+    majority = max(counts, key=counts.get)
+    print(f"Windows classified: {len(preds)}. Counts: {counts}. Majority: {majority}.")
+
+    return f"Windows classified: {len(preds)}. Counts: {counts}. Majority: {majority}."
+
+tools = [classify_csv]
 
 def main():
 
-    print("Loading data from CSV files...")
-          
-    information = load_file("data/arch-amd/labeled/benign.csv")
-    information2 = load_file("data/arch-amd/labeled/ransom-revil.csv")
-    information3 = load_file("data/arch-amd/labeled/spectre.csv")
+    test_data_path = "data/test/test-sodinokibi.csv"
+    model_path = "model/cnn-amd-all.keras"
 
-    print("Data loaded successfully.")
-
-    # Prompt for agent to learn about the data sample
-    summary_template = """
-    given the information {information} and {information2} and {information3} about the benign, ransomware, and spectre hardware events datasets. Each column represents a different hardware event: Branch instruction retired,  Branch misses,  L2 cache references,  L2 cache misses, and  Instruction retired. I want you to analyze the information and provide me with the following:
-    1. A short summary of each dataset 
-    2. Why it belong to that class base on the hardware events and the features of the dataset
-    3. Remember each class behavior and the features of the dataset.
-    """
-
-    # Put prompt into Langchain prompt template
-    summary_prompt_template = PromptTemplate(
-        input_variables=["information", "information2", "information3"], template=summary_template
-    )
-
-    # For OpenAI api
-    # llm = ChatOpenAI(temperature=0, model="gpt-5")
     # For Ollama local model deployment
     llm = ChatOllama(temperature=0, model="gemma4:e4b")
-    
-    chain = summary_prompt_template | llm
 
-    # Invoke chat to get response
-    response = chain.invoke(input={"information": information, "information2": information2, "information3": information3})
-    print(response.content)
+    # Create an agent with the model and tools
+    agent = create_agent(
+        model=llm, 
+        tools=tools,
+        system_prompt="You are a security data scientist. Use the tools to classify "
+                      "the dataset, then explain the result in full details why the model classified it that way based on the performance counter data.",
+    )
 
-    # Load data sample for classification
-    information4 = load_file("data/arch-amd/original/test-sodinokibi.csv")
-
-    classification_template = """
-        given the information {information4}. Each column represents a different hardware event: Branch instruction retired,  Branch misses,  L2 cache references,  L2 cache misses, and  Instruction retired. Analyze the information and provide me which class (benign, ransomware, spectre) the dataset belongs to according to the previous analysis and the features of the dataset. Please provide a brief explanation for your classification.
-        """
-    classification_prompt_template = PromptTemplate(
-            input_variables=["information4"], template=classification_template
-        )
-    chain2 = classification_prompt_template | llm
-    response2 = chain2.invoke(input={"information4": information4})
-    print("Classification Results:")
-    print(response2.content)
+    # Invoke agent to get response
+    result = agent.invoke({
+        "messages": [{
+            "role": "user",
+            "content": f"Classify the dataset at {test_data_path} "
+                       f"using the model at {model_path}.",
+        }]
+    })
+    print(result["messages"][-1].content)
 
 if __name__ == "__main__":
     main()

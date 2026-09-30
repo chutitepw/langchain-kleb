@@ -12,4 +12,7 @@ dependencies = [
     "langchain-openai>=0.3.30",
     "python-dotenv>=1.1.1",
     "pandas",
+    "numpy",
+    "keras",
+    "tensorflow"
 ]

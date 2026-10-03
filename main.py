@@ -59,6 +59,7 @@ def classify_csv(file_path: str, model_path: str) -> str:
 
     return f"Windows classified: {len(preds)}. Counts: {counts}. Majority: {majority}."
 
+# Define a tool to search the reference manual for relevant information
 @tool
 def search_manual(query: str) -> str:
     """Search the reference manual for background on hardware performance counters,

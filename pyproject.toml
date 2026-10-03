@@ -14,5 +14,9 @@ dependencies = [
     "pandas",
     "numpy",
     "keras",
-    "tensorflow"
+    "tensorflow",
+    "langchain-pinecone",
+    "langchain-unstructured",
+    "langchain-community",
+    "langchain-text-splitters",
 ]

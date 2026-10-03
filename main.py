@@ -6,6 +6,12 @@ from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 # Ollama for local model deployment
 from langchain_ollama import ChatOllama
+
+# RAG data retrival
+from langchain_ollama import OllamaEmbeddings
+from langchain_pinecone import PineconeVectorStore
+
+import os
 import pandas as pd
 import numpy as np
 
@@ -15,6 +21,11 @@ from langchain.agents import create_agent
 from keras.models import load_model
 
 _model_cache = {}
+
+vector_store = PineconeVectorStore(
+    index_name=os.environ["INDEX_NAME"],
+    embedding=OllamaEmbeddings(model="nomic-embed-text"),
+)
 
 # Define a tool to classify a CSV file using a Keras model
 @tool
@@ -48,7 +59,23 @@ def classify_csv(file_path: str, model_path: str) -> str:
 
     return f"Windows classified: {len(preds)}. Counts: {counts}. Majority: {majority}."
 
-tools = [classify_csv]
+@tool
+def search_manual(query: str) -> str:
+    """Search the reference manual for background on hardware performance counters,
+    ransomware and Spectre behavior, and how to interpret classification results.
+    Args:
+        query: A natural-language question or keywords to look up.
+    Returns:
+        The most relevant manual excerpts with their sources.
+    """
+    results = vector_store.similarity_search(query, k=4)
+    return "\n\n---\n\n".join(
+        f"[{os.path.basename(d.metadata.get('source', '?'))}"
+        f" p.{d.metadata.get('page', '?')}]\n{d.page_content}"
+        for d in results
+    )
+
+tools = [classify_csv, search_manual]
 
 def main():
 
@@ -62,8 +89,12 @@ def main():
     agent = create_agent(
         model=llm, 
         tools=tools,
-        system_prompt="You are a security data scientist. Use the tools to classify "
-                      "the dataset, then explain the result in full details why the model classified it that way based on the performance counter data.",
+        system_prompt=(
+            "You are a security data scientist. First use classify_csv to classify the dataset. "
+            "Then use search_manual to look up what the predicted class and the relevant "
+            "performance counters mean. Base your explanation on the manual excerpts and "
+            "cite their sources. If the manual doesn't cover something, say so."
+        ),
     )
 
     # Invoke agent to get response

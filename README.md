@@ -1,6 +1,6 @@
 LangChain Tutorial
 ==============================
-Tutorial on using the LangChain API 
+Tutorial on using the LangChain API with custom tool for ML classification.
 # Requirement
 
 - uv

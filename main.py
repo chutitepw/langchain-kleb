@@ -14,7 +14,11 @@ from langchain.agents import create_agent
 
 from keras.models import load_model
 
+import os
+from rag import get_vector_store
+
 _model_cache = {}
+vector_store = get_vector_store()
 
 # Define a tool to classify a CSV file using a Keras model
 @tool
@@ -48,7 +52,28 @@ def classify_csv(file_path: str, model_path: str) -> str:
 
     return f"Windows classified: {len(preds)}. Counts: {counts}. Majority: {majority}."
 
-tools = [classify_csv]
+# Define a tool to retrieve relevant excerpts from the manuals in Chroma
+@tool
+def search_manual(query: str) -> str:
+    """Search the reference manual for background on hardware performance counters,
+    ransomware and Spectre behavior, and how to interpret classification results.
+    Args:
+        query: A natural-language question or keywords to look up.
+    Returns:
+        The most relevant manual excerpts with their sources.
+    """
+    results = vector_store.similarity_search(query, k=4)
+    if not results:
+        return "No manual excerpts found. Run ingest.py after adding files to docs/."
+    excerpts = []
+    for d in results:
+        source = os.path.basename(d.metadata.get("source", "?"))
+        if "page" in d.metadata:
+            source += f" p.{d.metadata['page']}"
+        excerpts.append(f"[{source}]\n{d.page_content}")
+    return "\n\n---\n\n".join(excerpts)
+
+tools = [classify_csv, search_manual]
 
 def main():
 
@@ -62,8 +87,13 @@ def main():
     agent = create_agent(
         model=llm, 
         tools=tools,
-        system_prompt="You are a security data scientist. Use the tools to classify "
-                      "the dataset, then explain the result in full details why the model classified it that way based on the performance counter data.",
+        system_prompt=(
+            "You are a security data scientist. First use classify_csv to classify the dataset. "
+            "Then use search_manual to look up what the predicted class and the relevant "
+            "performance counters mean. Explain in full detail why the model classified it "
+            "that way, basing your explanation on the manual excerpts and citing their sources. "
+            "If the manual doesn't cover something, say so."
+        ),
     )
 
     # Invoke agent to get response

@@ -21,10 +21,12 @@ For open model deployment with Ollama
 ```
 ollama pull gemma4:e4b
 ollama run gemma4:e4b
+ollama pull nomic-embed-text
 ```
 
 # Run
 ```
 uv sync
+uv run python ingest.py
 uv run python main.py
 ```
